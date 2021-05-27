@@ -17,7 +17,7 @@ RP2040 allows external clock in range 1-15 MHz. GPIO pins are able to handle up 
 
 ## Wiring
 
-- Connect input pulse signal input to GPIO16 (pin 21).
+- Connect input pulse signal to GPIO16 (pin 21).
 - Connect external clock input to GPIO20 (pin 26).
 - Connect to GPIO0 (pin 1) for serial output (115200 bauds).
 - Clock output available at GPIO21 (pin 27) for configurations with external 10 MHz and internal XOSC clocks.

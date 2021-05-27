@@ -21,8 +21,8 @@ target_link_libraries(picoPET
     hardware_pio
 )
 
-pico_enable_stdio_usb(picoPET 1)
-pico_enable_stdio_uart(picoPET 0)
+pico_enable_stdio_usb(picoPET 0)
+pico_enable_stdio_uart(picoPET 1)
 
 # create map/bin/hex file etc.
 pico_add_extra_outputs(picoPET)
