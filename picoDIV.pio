@@ -1,0 +1,44 @@
+.program picodiv
+ 
+; Divides the input frequency by factor given from main program
+; Expects to 32 bit integeters 
+;   - number of clk_sys pulses for the HIGH portion of the output pulse (stored to ISR register)
+;   - number of clk_sys pulses for the LOW portion of the output pulse (stored to Y register)
+;
+; Based on the Raspberry Pi Pico pio_blink example
+; SPDX-License-Identifier: BSD-3-Clause
+
+; Version:
+; 07-May-2021  Marek Dorsic (.md)
+
+
+    pull block   ; Wait for the main program to write number of HIGH cycles
+    out x, 32    ; Read the number of HIGH clock cycles to X
+    mov isr, x   ; Store the HIGH clock cycles to ISR register for later use
+    pull block   ; Wait for the main program to write number of LOW cycles
+    out y, 32    ; Read number of LOW clock cycles to Y and store for later use
+
+.wrap_target
+    mov x, isr
+    set pins, 1   ; Turn PINS (LED) on
+lp1:
+    jmp x-- lp1   ; Delay for (x + 1) cycles, x is a 32 bit number
+    mov x, y
+    set pins, 0   ; Turn PINS (LED) off
+lp2:
+    jmp x-- lp2   ; Delay for the same number of cycles again
+.wrap             ; Blink forever!
+
+
+
+% c-sdk {
+// this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
+
+void picodiv_program_init(PIO pio, uint sm, uint offset, uint pin) {
+   pio_gpio_init(pio, pin);
+   pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, true);
+   pio_sm_config c = picodiv_program_get_default_config(offset);
+   sm_config_set_set_pins(&c, pin, 1);
+   pio_sm_init(pio, sm, offset, &c);
+}
+%}

@@ -1,0 +1,41 @@
+.program picopet
+ 
+; Waits for the GPIO16 pin to go HIGH and starts to count clock cycles.
+; It uses X register decrementing its value from max value (2**32) set 
+; on each rising edge to next rising edge when the current value is
+; pushed to main routine and X register reset to max value.
+; 
+; Based on the Raspberry Pi Pico pio_blink example
+; SPDX-License-Identifier: BSD-3-Clause
+
+; Version:
+; 25-May-2021  Marek Dorsic (.md)
+
+wait 1 gpio 16      ; waits for rising edge
+
+.wrap_target
+    set x, 0            ; set X to be 0
+    mov x, !x           ; set X to be 2^32
+high:
+    jmp x-- highd       ; decremen X until falling edge
+highd:
+    jmp PIN high        ; loop until pin HIGH
+low:
+    jmp PIN write       ; if next rising edge (pin HIGH) goto write
+    jmp x-- low         ; else decrement and loop
+write:
+    mov x, !x           ; negate X register to get the count
+    mov isr, x          ; move X to output register
+    push noblock        ; push ISR value to main routine
+.wrap
+
+
+% c-sdk {
+// this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
+
+void picopet_program_init(PIO pio, uint sm, uint offset) {
+   pio_sm_config c = picopet_program_get_default_config(offset);
+   sm_config_set_jmp_pin(&c, 16);
+   pio_sm_init(pio, sm, offset, &c);
+}
+%}
