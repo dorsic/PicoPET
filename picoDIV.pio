@@ -5,9 +5,8 @@
 ;   - number of clk_sys pulses for the HIGH portion of the output pulse (stored to ISR register)
 ;   - number of clk_sys pulses for the LOW portion of the output pulse (stored to Y register)
 ;
-; Based on the Raspberry Pi Pico pio_blink example
-; SPDX-License-Identifier: BSD-3-Clause
-
+; Based on the Raspberry Pi Pico pio_blink example.
+;
 ; Version:
 ; 07-May-2021  Marek Dorsic (.md)
 

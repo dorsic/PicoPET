@@ -13,7 +13,7 @@ Different external/internal clocks can be used. See following table with compile
 | iternal XOSC | 12 MHz | 166 ns | serial | [picoPET_i12M_serial.uf2](build/picoPET_i12M_serial.uf2) |
 | internal PLL | 125 MHz | 16 ns | USB | [picoPET_i125M_USB.uf2](build/picoPET_i125M_USB.uf2) |
 
-RP2040 allows external clock in range 1-15 MHz. GPIO pins are able to handle up to 50 MHz. See [RP2040 datasheet](https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwjBo_ru5unwAhVDgP0HHVWtDsYQFjAAegQIAhAF&url=https%3A%2F%2Fdatasheets.raspberrypi.org%2Frp2040%2Frp2040-datasheet.pdf&usg=AOvVaw0cYbMaHm3MR5NGDRAtgA0w) for details.
+RP2040 allows external clock in range 1-15 MHz. GPIO pins are able to handle up to 50 MHz. See [RP2040 datasheet](https://datasheets.raspberrypi.org/rp2040/rp2040-datasheet.pdf) for details.
 
 ## Wiring
 

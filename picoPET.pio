@@ -5,13 +5,11 @@
 ; on each rising edge to next rising edge when the current value is
 ; pushed to main routine and X register reset to max value.
 ; 
-; Based on the Raspberry Pi Pico pio_blink example
-; SPDX-License-Identifier: BSD-3-Clause
-
+;
 ; Version:
 ; 25-May-2021  Marek Dorsic (.md)
 
-wait 1 gpio 16      ; waits for rising edge
+wait 1 gpio 16          ; wait for rising edge
 
 .wrap_target
     set x, 0            ; set X to be 0
