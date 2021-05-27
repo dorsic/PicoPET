@@ -35,19 +35,21 @@
 #include "hardware/xosc.h"
 //#include <tusb.h>
 
-#define CLK_SRC_EXT_CLOCK 1
-#define CLK_SRC_XOSC 2
-#define CLK_SRC_SYS_PLL_125M 3
-#define CLK_SRC_EXT_CLOCK_PLL_125M 4
+#define CLK_SRC_EXT_CLOCK
+//#define CLK_SRC_XOSC
+//#define CLK_SRC_SYS_PLL_125M
+//#define CLK_SRC_EXT_CLOCK_PLL_125M
 
-uint clock_source = CLK_SRC_EXT_CLOCK_PLL_125M;
+#define OUTPUT_TIMEMARK
+//#define OUTPUT_CYCLE_COUNT
+//#define OUTPUT_FREQUENCY
 
 uint clock_freq = 10000000; // 10 MHz; change this if using external clock with differenct frequency
 uint pulse_len = 100000;    // number of clock cycles of the output pulse length
                             // 100000 cycles * 100ns (for 10MHz) = 10ms
 
 void configure_clocks() {
-    if (clock_source == CLK_SRC_XOSC) {
+    #if defined CLK_SRC_XOSC
         xosc_init();
         clock_freq = 12000000;  // 12MHz is the internal XOSC
         pulse_len = 120000;     // 10ms pulse
@@ -56,24 +58,25 @@ void configure_clocks() {
         clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clock_freq, clock_freq);
         clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);
         pll_deinit(pll_sys);
-    } else if (clock_source == CLK_SRC_EXT_CLOCK) {
+    #elif defined CLK_SRC_EXT_CLOCK
         // configure the clk_ref to run from pin GPIO20 (pin 26)
         clock_configure_gpin(clk_ref, 20, clock_freq, clock_freq);
         clock_configure_gpin(clk_sys, 20, clock_freq, clock_freq);
         clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, clock_freq, clock_freq);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT1_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, 1);    
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT1_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, 1); 
         xosc_disable();
         pll_deinit(pll_sys);
-    } else if (clock_source == CLK_SRC_EXT_CLOCK_PLL_125M) {
+    #elif defined CLK_SRC_EXT_CLOCK_PLL_125M
         set_sys_clock_khz(125000, true);
         clock_configure_gpin(clk_ref, 20, clock_freq, clock_freq);      // clock_freq is set at the beginning of the script        
         clock_freq = 125 * MHZ;  // 125 MHz 
-    } else {
+    #else
         xosc_init();
         clock_freq = 125000000;  // 125 MHz
         pulse_len = 1250000;     // 10ms pulse
         set_sys_clock_khz(125000, true);
-    }
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_SYS, 500000);
+    #endif
 }
 
 void countpet_forever(PIO pio, uint sm, uint offset) {
@@ -106,10 +109,19 @@ int main() {
 
     // initialize USB/Serial
     stdio_init_all();
-
+    uint64_t tm = 0;
     while (true) {
         uint32_t clk_cnt = pio_sm_get_blocking(pio0, 0);            // read the register from ASM code
-        printf("%u\n", (clk_cnt+3)*2);                              // write output to USB/serial
+        clk_cnt = (clk_cnt+3)*2;
+        #if defined OUTPUT_CYCLE_COUNT
+            printf("%u\n", clk_cnt);
+        #elif defined OUTPUT_FREQUENCY
+            printf("%g\n",(double)clock_freq/(double)clk_cnt);
+        #else
+            tm = tm + clk_cnt;
+            printf("%llu\n", tm);
+        #endif
+
     }
     
 }
