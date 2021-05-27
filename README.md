@@ -1,10 +1,10 @@
 # PicoPET
-Simple time interval counter.
+A simple time stamper.
 
 Let Raspberry Pi Pico count the number of cycles between two rising edges of an clock. 
-Resulting number is written to serial or USB output.
+Resulting time mark of each rising edge, or clock cycle count between adjacent rising edges or resulting measured frequency is written to serial or USB output.
 
-Different external/internal clocks can be used. See following table with compiled sample UF2 file links.
+Different external/internal clocks can be used. See following table with compiled sample UF2 file links for outputing rising edge time marks:
 
 | Clock | Frequency | Resolution | Output | UF2 binary |
 | ----- | :-------: | :--------: | :----: | ---------- |
