@@ -37,10 +37,11 @@ pico_enable_stdio_usb(picoPET 1)
 pico_enable_stdio_uart(picoPET 0)
 ```
 Set 1 for enabling the output interface and 0 for disabling.
+
 NOTE: Using of USB requires system clock of 48 MHz or above. It will not work e.g. external 10 MHz without not using the internal PLL.
 
 #### Setting clock source
-In the `picoPET.c` file uncomment one of the appropriate clock sources, or feel free to implement you own.
+In the `picoPET.c` file uncomment one of the appropriate clock sources or feel free to implement you own.
 
 ```
 //#define CLK_SRC_EXT_CLOCK
@@ -55,7 +56,7 @@ uint clock_freq = 10000000; // 10 MHz; change this if using external clock with 
 ```
 
 #### Setting output type
-In the `picoPET.c` file uncomment one of the appropriate output types, or feel free to implement you own.
+In the `picoPET.c` file uncomment one of the appropriate output types or feel free to implement you own.
 ```
 #define OUTPUT_TIMEMARK
 //#define OUTPUT_CYCLE_COUNT
