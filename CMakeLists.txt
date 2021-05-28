@@ -10,7 +10,7 @@ add_executable(picoPET
     picoDIV.pio
 )
 
-pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/picoDIV.pio)
+# pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/picoDIV.pio)
 pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/picoPET.pio)
 
 target_sources(picoPET PRIVATE picoPET.c)

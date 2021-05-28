@@ -18,7 +18,7 @@
     WIRING:
         - INPUT pulse pin GPIO16 (pin 21, max 3.3V)
         - EXT CLOCK input pin GPIO20 (pin 26) (max. 50 MHz, 3.3V square)
-        - Serial output pin GPIO1 (pin 2)
+        - Serial output pin GPIO0 (pin 1)
 
     Version:
     26-May-2021  Marek Dorsic (.md)
@@ -43,6 +43,9 @@
 #define OUTPUT_TIMEMARK
 //#define OUTPUT_CYCLE_COUNT
 //#define OUTPUT_FREQUENCY
+
+#define INPUT_SIGNAL_GPIO 16
+#define LED_PIN 25
 
 uint clock_freq = 10000000; // 10 MHz; change this if using external clock with differenct frequency
 uint pulse_len = 100000;    // number of clock cycles of the output pulse length
@@ -75,15 +78,16 @@ void configure_clocks() {
         clock_freq = 125000000;  // 125 MHz
         pulse_len = 1250000;     // 10ms pulse
         set_sys_clock_khz(125000, true);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_SYS, 500000);
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_SYS, 1250000);
     #endif
 }
 
-void countpet_forever(PIO pio, uint sm, uint offset) {
-    picopet_program_init(pio, sm, offset);
+void countpet_forever(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
+    picopet_program_init(pio, sm, offset, pin, led_pin);
     pio_sm_set_enabled(pio, sm, true);
 }
 
+/*
 void blink_pin_forever(PIO pio, uint sm, uint offset, uint pin, uint total_clk, uint pulse_clk) {
     picodiv_program_init(pio, sm, offset, pin);
     pio_sm_set_enabled(pio, sm, true);
@@ -91,16 +95,17 @@ void blink_pin_forever(PIO pio, uint sm, uint offset, uint pin, uint total_clk, 
     pio->txf[sm] = pulse_clk - 3;                  // write number of HIGH clock cycles to PIO register
     pio->txf[sm] = total_clk - pulse_clk - 3;      // write number off LOW clock cycles to PIO register
 }
+*/
 
 void configure_pios() {
     // program the PIOs
     PIO pio = pio0;
     uint offset = pio_add_program(pio, &picopet_program);
-    countpet_forever(pio, 0, offset);
+    countpet_forever(pio, 0, offset, INPUT_SIGNAL_GPIO, LED_PIN);
 
-    pio = pio1;
-    offset = pio_add_program(pio, &picodiv_program);
-    blink_pin_forever(pio, 1, offset, 25, clock_freq, pulse_len);       // 1 PPS output on GPIO25 (LED)
+//    pio = pio1;
+//    offset = pio_add_program(pio, &picodiv_program);
+//    blink_pin_forever(pio, 1, offset, 25, clock_freq, pulse_len);       // 1 PPS output on GPIO25 (LED)
 }
 
 int main() {
