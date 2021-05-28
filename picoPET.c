@@ -30,7 +30,7 @@
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "hardware/pll.h"
-#include "picoDIV.pio.h"
+//#include "picoDIV.pio.h"
 #include "picoPET.pio.h"
 #include "hardware/xosc.h"
 //#include <tusb.h>
