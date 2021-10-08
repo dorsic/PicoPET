@@ -9,7 +9,7 @@ Different external/internal clocks can be used. See following table with compile
 | Clock | Frequency | Resolution | Output | UF2 binary |
 | ----- | :-------: | :--------: | :----: | ---------- |
 | external | 10 MHz | 200 ns | serial | [picoPET_e10M_serial.uf2](build/picoPET_e10M_serial.uf2) |
-| external + internal PPL | 10 / 125 MHz | 16 ns | USB | [picoPET_e10M_125pll_USB.uf2](build/picoPET_e10M_125pll_USB.uf2) |
+| external + internal PPL |  |  |  | (no way to lock PLL to external clock  |
 | iternal XOSC | 12 MHz | 166 ns | serial | [picoPET_i12M_serial.uf2](build/picoPET_i12M_serial.uf2) |
 | internal PLL | 125 MHz | 16 ns | USB | [picoPET_i125M_USB.uf2](build/picoPET_i125M_USB.uf2) |
 
