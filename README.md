@@ -92,24 +92,24 @@ Using external clock with PLL requires connecting the external clock signal to R
 Connecting external clock to XIN is best achieved by removing the onboard XOSC and bypassing the XOSC ouput pad with nearest (e.g. GPIO10) pin.
 To upload new code to the Pico 12 MHz signal has to be used. 
 Convenient, reasonable stable 12 MHz 3.3V square signal can be obtained e.g. from the ublox GNSS modules. These use 48 MHz internal clock and 12 MHz is natural number divider so jitter is minimalized.
-![](<IMG_6690.jpg | width=200>)
+![](/IMG_6690.jpg | width=200>)
 
 #### Pico-SDK modification
 New XOSC frequency of the external clock has to be configured in the Pico SDK. Make a new copy of the SDK and modify these files
 
-###### <pico-sdk-path>/src/host/pico_platform/include/hardware/platform_defs.h
+###### /<pico-sdk-path>/src/host/pico_platform/include/hardware/platform_defs.h
 Change the `XOSC_MHZ` constant from 12 MHz to frequency of your external clock (e.g. 10 MHz)
 ```
 #define XOSC_MHZ 10
 ```
 
-###### <pico-sdk-path>/src/rp2040/hardware_regs/include/hardware/platform_defs.h
+###### /<pico-sdk-path>/src/rp2040/hardware_regs/include/hardware/platform_defs.h
 Change the `XOSC_MHZ` constant from 12 MHz to frequency of your external clock (e.g. 10 MHz)
 ```
 #define XOSC_MHZ _u(10)
 ```
 
-###### <pico-sdk-path>/src/rp2_common/hardware_clocks/clocks.c
+###### /<pico-sdk-path>/src/rp2_common/hardware_clocks/clocks.c
 The clock.c hardwires the 12 MHz frequency of onboard XOSC and we want to make it variable refering `XOSC_MHZ` constant. 
 Locate the `clocks_init()` procedure update the configuration of `clk_ref` by substiting `12 * MHZ` constant with `XOSC_MHZ`. Change the line
 ```
