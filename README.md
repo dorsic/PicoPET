@@ -92,7 +92,7 @@ Using external clock with PLL requires connecting the external clock signal to R
 Connecting external clock to XIN is best achieved by removing the onboard XOSC and bypassing the XOSC ouput pad with nearest (e.g. GPIO10) pin.
 To upload new code to the Pico 12 MHz signal has to be used. 
 Convenient, reasonable stable 12 MHz 3.3V square signal can be obtained e.g. from the ublox GNSS modules. These use 48 MHz internal clock and 12 MHz is natural number divider so jitter is minimalized.
-![](./IMG_6690.jpg | width=200)
+![](IMG_6690.jpg | width=200)
 
 #### Pico-SDK modification
 New XOSC frequency of the external clock has to be configured in the Pico SDK. Make a new copy of the SDK and modify these files
