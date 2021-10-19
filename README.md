@@ -13,7 +13,7 @@ The code allows for different external/internal clock sources to be used.
 | external | 1-50 MHz | 200 ns (@10MHz) | serial |
 | external with PPL<sup>*</sup> | 125 MHz (default) | 16 ns (@125MHz| serial or USB |
 
-<sup>*</sup> _Using PLL with external clock source requires hardware modifications and Pico SDK modifications. On the HW side it is required to remove onboard XOSC and to connect the external clock to XIN pin of the RP2040 chip. External clock source has to have squared 3.3V signal up to 25MHz. To upload a new code 12MHz is required. See additional notes below._
+<sup>*</sup> _Using PLL with external clock source requires hardware modifications and Pico SDK modifications. On the HW side it is required to remove onboard XOSC and to connect the external clock to XIN pin of the RP2040 chip. External clock source has to have squared 3.3V signal up to 25 MHz (by experience). To upload a new code 12 MHz is required. See additional notes below._
 
 RP2040 allows external clock in range 1-15 MHz. GPIO pins are able to handle up to 50 MHz. See [RP2040 datasheet](https://datasheets.raspberrypi.org/rp2040/rp2040-datasheet.pdf) for details.
 Internal PLL can be sourced only from the onboard XOSC.
