@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "pico-sdk/src/common/boot_uf2",
+		"source" : "/Users/dorsic/Development/pico/pico-sdk/src/common/boot_uf2"
+	}
+}

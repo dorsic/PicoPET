@@ -30,85 +30,90 @@
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "hardware/pll.h"
-//#include "picoDIV.pio.h"
-#include "picoPET.pio.h"
+#include "picoPET_sp.pio.h"
+#include "picoPET_mp.pio.h"
 #include "hardware/xosc.h"
-//#include <tusb.h>
+#include "hardware/clocks.h"
+#include "hardware/vreg.h"
 
-#define CLK_SRC_EXT_CLOCK
-//#define CLK_SRC_XOSC
-//#define CLK_SRC_SYS_PLL_125M
-//#define CLK_SRC_EXT_CLOCK_PLL_125M
 
-#define OUTPUT_TIMEMARK
+// INPUT CLOCK SOURECE REFERENCE
+//#define CLK_SRC_XOSC                  // internal 12MHz TCXO
+#define CLK_SRC_XOSC_PLL               // PLL sourced from internal TCXO
+//#define CLK_SRC_EXT_CLOCK             // external clock on PIN20, max. 50 MHz, set clk_src_freq below appropriately
+//#define CLK_SRC_EXT_CLOCK_PLL           // external clock on XIN with PLL, needs HW modification, max. 25 MHz
+
+// PLL SETTINGS
+#define SYS_PLL_FREQ 200*MHZ              // slightly overclocked from default 125 MHz; NOTE not arbitrary freq possible. See RP2040 datasheet
+#define CORE_VOLTAGE VREG_VOLTAGE_1_10    // consider higher core voltage for higher PLL, default is 1.1V
+
+// OUTPUT SETTINGS
+#define OUTPUT_FREQUENCY
+//#define OUTPUT_TIMEMARK
 //#define OUTPUT_CYCLE_COUNT
-//#define OUTPUT_FREQUENCY
+
+#define AVG_PERIODS 1                   // number of periods to average; has to at least 1, for steady results use odd numbers 1, 3, 5...
 
 #define INPUT_SIGNAL_GPIO 16
 #define LED_PIN 25
 
-uint clock_freq = 10000000; // 10 MHz; change this if using external clock with differenct frequency
-uint pulse_len = 100000;    // number of clock cycles of the output pulse length
-                            // 100000 cycles * 100ns (for 10MHz) = 10ms
+uint clk_src_freq = 10*MHZ;             // change this only if CLK_SRC_EXT_CLOCK defined
 
 void configure_clocks() {
     #if defined CLK_SRC_XOSC
         xosc_init();
-        clock_freq = 12000000;  // 12MHz is the internal XOSC
-        pulse_len = 120000;     // 10ms pulse
-        clock_configure(clk_ref, CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC, 0, clock_freq, clock_freq);
-        clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLK_REF, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clock_freq, clock_freq);
-        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clock_freq, clock_freq);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);
+        clk_src_freq = 12000000;  // 12MHz is the internal XOSC
+        clock_configure(clk_ref, CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC, 0, clk_src_freq, clk_src_freq);
+        clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLK_REF, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clk_src_freq, clk_src_freq);
+//        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clk_src_freq, clk_src_freq);
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);    // put the TCXO clock on pin 21
         pll_deinit(pll_sys);
     #elif defined CLK_SRC_EXT_CLOCK
         // configure the clk_ref to run from pin GPIO20 (pin 26)
-        clock_configure_gpin(clk_ref, 20, clock_freq, clock_freq);
-        clock_configure_gpin(clk_sys, 20, clock_freq, clock_freq);
-        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, clock_freq, clock_freq);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT1_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, 1); 
+        clock_configure_gpin(clk_ref, 20, clk_src_freq, clk_src_freq);
+        clock_configure_gpin(clk_sys, 20, clk_src_freq, clk_src_freq);
+        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, clk_src_freq, clk_src_freq);
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT1_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, 1);   // put the external ref. clock on pin 21
         xosc_disable();
         pll_deinit(pll_sys);
-    #elif defined CLK_SRC_EXT_CLOCK_PLL_125M
-        set_sys_clock_khz(125000, true);
-        clock_configure_gpin(clk_ref, 20, clock_freq, clock_freq);      // clock_freq is set at the beginning of the script        
-        clock_freq = 125 * MHZ;  // 125 MHz 
-    #else
+    #elif defined CLK_SRC_XOSC_PLL
         xosc_init();
-        clock_freq = 125000000;  // 125 MHz
-        pulse_len = 1250000;     // 10ms pulse
-        set_sys_clock_khz(125000, true);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_SYS, 1250000);
+        clk_src_freq = SYS_PLL_FREQ;  // 125 MHz 
+        set_sys_clock_khz(SYS_PLL_FREQ/1000, true);
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);
+    #else   //CLK_SRC_EXT_CLOCK_PLL
+        xosc_init();
+        clk_src_freq = SYS_PLL_FREQ;
+        set_sys_clock_khz(clk_src_freq/1000, true);
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1000);     // put the external ref. clock on pin 21
     #endif
 }
 
 void countpet_forever(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
-    picopet_program_init(pio, sm, offset, pin, led_pin);
+    #if AVG_PERIODS == 1
+        picopet_sp_program_init(pio, sm, offset, pin, led_pin);
+    #else
+        picopet_mp_program_init(pio, sm, offset, pin, led_pin);
+    #endif
     pio_sm_set_enabled(pio, sm, true);
+    pio->txf[sm] = AVG_PERIODS-1; 
 }
-
-/*
-void blink_pin_forever(PIO pio, uint sm, uint offset, uint pin, uint total_clk, uint pulse_clk) {
-    picodiv_program_init(pio, sm, offset, pin);
-    pio_sm_set_enabled(pio, sm, true);
-    
-    pio->txf[sm] = pulse_clk - 3;                  // write number of HIGH clock cycles to PIO register
-    pio->txf[sm] = total_clk - pulse_clk - 3;      // write number off LOW clock cycles to PIO register
-}
-*/
 
 void configure_pios() {
     // program the PIOs
     PIO pio = pio0;
-    uint offset = pio_add_program(pio, &picopet_program);
+    #if AVG_PERIODS == 1
+        uint offset = pio_add_program(pio, &picopet_sp_program);
+    #else
+        uint offset = pio_add_program(pio, &picopet_mp_program);
+    #endif
     countpet_forever(pio, 0, offset, INPUT_SIGNAL_GPIO, LED_PIN);
-
-//    pio = pio1;
-//    offset = pio_add_program(pio, &picodiv_program);
-//    blink_pin_forever(pio, 1, offset, 25, clock_freq, pulse_len);       // 1 PPS output on GPIO25 (LED)
 }
 
 int main() {
+    vreg_set_voltage(CORE_VOLTAGE);
+    xosc_init();
+    clocks_init();
     configure_clocks();
     configure_pios();
 
@@ -117,11 +122,22 @@ int main() {
     uint64_t tm = 0;
     while (true) {
         uint32_t clk_cnt = pio_sm_get_blocking(pio0, 0);            // read the register from ASM code
-        clk_cnt = (clk_cnt+3)*2;
+        clk_cnt = ~clk_cnt;                                         // negate the received value
+        uint32_t clk_cor = 0;
+        // PIO CALIBRATION CORRECTIONS
+        #if AVG_PERIODS == 1
+//            clk_cnt = (clk_cnt+3)*2;
+            clk_cor = (clk_cnt+2)*2;
+        #else
+            clk_cor = 2*(clk_cnt + 1.5*AVG_PERIODS + 1.5);
+        #endif
         #if defined OUTPUT_CYCLE_COUNT
             printf("%u\n", clk_cnt);
         #elif defined OUTPUT_FREQUENCY
-            printf("%g\n",(double)clock_freq/(double)clk_cnt);
+//            double fs = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cnt);
+            double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
+//            printf("@%u\t %u\t %u\t %.6f\t %.6f\n", clk_src_freq, clk_cnt, clk_cor, fs, fc);
+            printf("%.6f\n", fc);
         #else
             tm = tm + clk_cnt;
             printf("%llu\n", tm);
