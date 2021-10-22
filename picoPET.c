@@ -27,6 +27,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "pico/stdlib.h"
+#include "pico/divider.h"
+#include "hardware/timer.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "hardware/pll.h"
@@ -44,17 +46,21 @@
 //#define CLK_SRC_EXT_CLOCK_PLL           // external clock on XIN with PLL, needs HW modification, max. 25 MHz
 
 // PLL SETTINGS
-#define SYS_PLL_FREQ 200*MHZ              // slightly overclocked from default 125 MHz; NOTE not arbitrary freq possible. See RP2040 datasheet
-#define CORE_VOLTAGE VREG_VOLTAGE_1_10    // consider higher core voltage for higher PLL, default is 1.1V
+#define SYS_PLL_FREQ 250*MHZ              // slightly overclocked from default 125 MHz; NOTE not arbitrary freq possible. See RP2040 datasheet
+#define CORE_VOLTAGE VREG_VOLTAGE_1_20    // consider higher core voltage for higher PLL, default is 1.1V
 
 // OUTPUT SETTINGS
-#define OUTPUT_FREQUENCY
-//#define OUTPUT_TIMEMARK
+//#define OUTPUT_FREQUENCY
+#define OUTPUT_TIMEMARK
 //#define OUTPUT_CYCLE_COUNT
 
 #define AVG_PERIODS 1                   // number of periods to average; has to at least 1, for steady results use odd numbers 1, 3, 5...
 
-#define INPUT_SIGNAL_GPIO 16
+#define SM_COUNT 4
+#define INPUT_SIGNAL1_GPIO 13
+#define INPUT_SIGNAL2_GPIO 14
+#define INPUT_SIGNAL3_GPIO 17
+#define INPUT_SIGNAL4_GPIO 18
 #define LED_PIN 25
 
 uint clk_src_freq = 10*MHZ;             // change this only if CLK_SRC_EXT_CLOCK defined
@@ -78,9 +84,9 @@ void configure_clocks() {
         pll_deinit(pll_sys);
     #elif defined CLK_SRC_XOSC_PLL
         xosc_init();
-        clk_src_freq = SYS_PLL_FREQ;  // 125 MHz 
+        clk_src_freq = SYS_PLL_FREQ;
         set_sys_clock_khz(SYS_PLL_FREQ/1000, true);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);
+        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, XOSC_MHZ*MHZ);
     #else   //CLK_SRC_EXT_CLOCK_PLL
         xosc_init();
         clk_src_freq = SYS_PLL_FREQ;
@@ -101,13 +107,19 @@ void countpet_forever(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
 
 void configure_pios() {
     // program the PIOs
-    PIO pio = pio0;
+    uint off[SM_COUNT];
     #if AVG_PERIODS == 1
-        uint offset = pio_add_program(pio, &picopet_sp_program);
+        off[0] = pio_add_program(pio0, &picopet_sp_program);
+        off[1] = pio_add_program(pio1, &picopet_sp_program);
+        off[2] = pio_add_program(pio0, &picopet_sp_program);
+        off[3] = pio_add_program(pio1, &picopet_sp_program);
     #else
         uint offset = pio_add_program(pio, &picopet_mp_program);
     #endif
-    countpet_forever(pio, 0, offset, INPUT_SIGNAL_GPIO, LED_PIN);
+    countpet_forever(pio0, 0, off[0], INPUT_SIGNAL1_GPIO, LED_PIN);
+    countpet_forever(pio1, 0, off[1], INPUT_SIGNAL2_GPIO, LED_PIN);
+    countpet_forever(pio0, 1, off[2], INPUT_SIGNAL3_GPIO, LED_PIN);
+    countpet_forever(pio1, 1, off[3], INPUT_SIGNAL4_GPIO, LED_PIN);
 }
 
 int main() {
@@ -115,34 +127,69 @@ int main() {
     xosc_init();
     clocks_init();
     configure_clocks();
+    stdio_init_all();
     configure_pios();
 
-    // initialize USB/Serial
-    stdio_init_all();
-    uint64_t tm = 0;
-    while (true) {
-        uint32_t clk_cnt = pio_sm_get_blocking(pio0, 0);            // read the register from ASM code
-        clk_cnt = ~clk_cnt;                                         // negate the received value
-        uint32_t clk_cor = 0;
-        // PIO CALIBRATION CORRECTIONS
-        #if AVG_PERIODS == 1
-//            clk_cnt = (clk_cnt+3)*2;
-            clk_cor = (clk_cnt+2)*2;
-        #else
-            clk_cor = 2*(clk_cnt + 1.5*AVG_PERIODS + 1.5);
-        #endif
-        #if defined OUTPUT_CYCLE_COUNT
-            printf("%u\n", clk_cnt);
-        #elif defined OUTPUT_FREQUENCY
-//            double fs = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cnt);
-            double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
-//            printf("@%u\t %u\t %u\t %.6f\t %.6f\n", clk_src_freq, clk_cnt, clk_cor, fs, fc);
-            printf("%.6f\n", fc);
-        #else
-            tm = tm + clk_cnt;
-            printf("%llu\n", tm);
-        #endif
-
+    uint64_t tm[SM_COUNT];
+    double ts[SM_COUNT];
+    for (uint8_t i = 0; i < SM_COUNT; i++) {
+        tm[i] = 0;
+        ts[i] = 0.0;
     }
-    
+
+    PIO pio;
+    uint32_t cnt = MHZ;
+    while (true) {
+        for (uint8_t i = 0; i < SM_COUNT; i++) {
+            pio = (i % 2 == 0) ? pio0 : pio1;
+            if (!pio_sm_is_rx_fifo_empty(pio, i/2)) {
+                uint32_t clk_cnt = pio_sm_get(pio, i/2);            // read the register from ASM code
+                clk_cnt = ~clk_cnt;                                // negate the received value
+                uint32_t clk_cor = 0;
+                // PIO CALIBRATION CORRECTIONS
+                #if AVG_PERIODS == 1
+                    clk_cor = (clk_cnt+2)*2;
+                #else
+                    clk_cor = 2*(clk_cnt + 1.5*AVG_PERIODS + 1.5);
+                #endif
+                #if defined OUTPUT_CYCLE_COUNT
+                    printf("%i\t %u\n", i, clk_cnt);
+                #elif defined OUTPUT_FREQUENCY
+                    double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
+                    printf("%i\t %.6f\n", i, fc);
+                #elif defined OUTPUT_TIMEMARK
+                    tm[i] = tm[i] + clk_cor;
+                    uint64_t rem;
+                    uint64_t div;
+                    div = divmod_u64u64_rem(tm[i], (uint64_t) clk_src_freq, &rem);
+                    ts[i] = (double)div + (double)((uint32_t)rem)/(double)clk_src_freq;
+                    printf("%i\t %llu\t %.9f\t ", i, tm[i], ts[i]);
+                    for (uint8_t x = 0; x < SM_COUNT; x++) {
+                        printf("%x\t %u\t %.10f\t ", x, tm[x], ts[x]);
+                    }
+                    printf("\n");
+                #else
+                    tm[i] = tm[i] + clk_cor;
+                    uint64_t rem;
+                    uint64_t div;
+                    div = divmod_u64u64_rem(tm[i], (uint64_t) clk_src_freq, &rem);
+                    ts[i] = (double)div + (double)((uint32_t)rem)/(double)clk_src_freq;
+                    double fs = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cnt);
+                    double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
+                    printf("@%u\t %i\t %u\t %u\t %.6f\t %.6f\t %u\t %.10f\t", clk_src_freq, i, clk_cnt, clk_cor, fs, fc, tm[i], ts[i]);
+                    for (uint8_t x = 0; x < SM_COUNT; x++) {
+                        printf("%u\t %u\t %.10f\t ", x, tm[x], ts[x]);
+                    }
+                    printf("\n");
+                    if (cnt >= 100) {
+                        uint64_t a = time_us_64();
+                        printf("$ %u\n", a);
+                        cnt = 0;
+                    } else {
+                        cnt++;
+                    }
+                #endif
+            }
+        }
+    }
 }

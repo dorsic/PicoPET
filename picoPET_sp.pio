@@ -14,12 +14,12 @@
 .side_set 1
 
     pull block side 0       ; Wait for the main program to write number of periods to count
-    out x, 32 side 0        ; Read the number of periods to X, but do not use it
+    out x 32 side 0        ; Read the number of periods to X, but do not use it
 
-wait 1 gpio 16 side 0       ; wait for rising edge and turn off the LED (with "side 0")
+wait 1 pin 0 side 0       ; wait for rising edge and turn off the LED (with "side 0")
 
 .wrap_target 
-    mov x, ~NULL side 1         ; set X to be 2^32 and turn on the LED because rising edge detected first time since program started
+    mov x ~NULL side 1         ; set X to be 2^32 and turn on the LED because rising edge detected first time since program started
 high:
     jmp x-- highd side 1    ; decrement X and go waiting while pin HIGH (until falling edge)
 highd:
@@ -28,7 +28,7 @@ low:
     jmp PIN write side 0   ; if next rising edge (pin HIGH) goto write, but first time on this instruction means falling edge so turn off LED
     jmp x-- low side 0      ; else decrement and loop
 write:
-    mov isr, x side 1       ; move X to output register, also rising edge detected so turn on the LED
+    mov isr x side 1       ; move X to output register, also rising edge detected so turn on the LED
     push noblock side 1     ; push ISR value to main routine
 .wrap
 
@@ -40,7 +40,7 @@ void picopet_sp_program_init(PIO pio, uint sm, uint offset, uint pin, uint led_p
    pio_gpio_init(pio, led_pin);
    pio_sm_set_consecutive_pindirs(pio, sm, led_pin, 1, true);
    pio_sm_config c = picopet_sp_program_get_default_config(offset);
-   sm_config_set_set_pins(&c, led_pin, 1);
+   sm_config_set_in_pins(&c, pin);
    sm_config_set_sideset_pins(&c, led_pin);
    sm_config_set_sideset(&c, 1, false, false);
    sm_config_set_jmp_pin(&c, pin);

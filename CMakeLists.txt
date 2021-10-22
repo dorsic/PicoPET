@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-include(/Users/dorsic/Development/Pico/pico-sdk/external/pico_sdk_import.cmake)
+include(/Users/dorsic/Development/Pico/pico-sdk-10MHz/external/pico_sdk_import.cmake)
 
 project(picoPET)
 pico_sdk_init()
@@ -19,13 +19,15 @@ target_sources(picoPET PRIVATE picoPET.c)
 
 target_link_libraries(picoPET
     pico_stdlib
+    pico_divider
+    hardware_timer
     hardware_clocks
     hardware_pio
     hardware_vreg
 )
 
 pico_enable_stdio_usb(picoPET 1)
-pico_enable_stdio_uart(picoPET 0)
+pico_enable_stdio_uart(picoPET 1)
 
 # create map/bin/hex file etc.
 pico_add_extra_outputs(picoPET)
