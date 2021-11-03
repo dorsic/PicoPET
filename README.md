@@ -39,6 +39,8 @@ Examle output for timemarks
 5.999978820	 ChB
 ```
 
+Indicator GPIOs will output 10 Hz signal while channel input HIGH. You will see pulsing led on 1 PPS 50-50 duty cycle input or just one blink for short pulse (<100ms) PPS input.
+
 ## Wiring
 
 - Connect input pulse signal one (or more) input channel GPIOs.
