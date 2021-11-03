@@ -18,14 +18,45 @@ The code allows for different external/internal clock sources to be used.
 RP2040 allows external clock in range 1-15 MHz. GPIO pins are able to handle up to 50 MHz. See [RP2040 datasheet](https://datasheets.raspberrypi.org/rp2040/rp2040-datasheet.pdf) for details.
 Internal PLL can be sourced only from the onboard XOSC.
 
+#### Output Types
+
+The code can be modified (see below) to output:
+
+- *timemarks* for each channel a timemark (in seconds from first sensed pulse) and channel name. These can be directly used in e.g. TimeLab. Four simultaneus channels are possible.
+- *frequency* calculated from counted sys clock periods within one or mode input signal periods. If 1 period used (AVG_PERIODS 1) 2 input channels can be used. When averaging on more periods required sensing only one input channel is possible (because of low PIO memory?)
+- *cycle count* number of sys clock periods within one or mode input signal periods. If 1 period used (AVG_PERIODS 1) 2 input channels can be used. When averaging on more periods required sensing only one input channel is possible (because of low PIO memory?)
+
+Examle output for timemarks
+```
+1.999992940	 ChB
+3.999672500	 ChC
+2.999989410	 ChB
+4.999672500	 ChC
+3.999985890	 ChB
+5.999672500	 ChC
+4.999982350	 ChB
+6.999672500	 ChC
+5.999978820	 ChB
+```
+
 ## Wiring
 
-- Connect input pulse signal to GPIO16 (pin 21).
+- Connect input pulse signal one (or more) input channel GPIOs.
 - Connect external clock input to GPIO20 (pin 26).
-- Connect to GPIO0 (pin 1) for serial output (115200 bauds).
-- Clock output available at GPIO21 (pin 27) for configurations with external 10 MHz and internal XOSC clocks.
+- Connect LED indicators for each channel to GPIO 5, 25, 9, 13
+- Connect to GPIO0 (pin 1) for serial output (115200 bauds), optional.
+- PPS clock output available at GPIO21 (pin 27).
 
 Note all Raspberry Pi Pico GPIOs are 3.3V only. Do not connect 5V signals unless you known what you are doing.
+
+#### Channel mapping
+
+| Channel | Input GPIO | Led indication GPIO |
+| ------- | :--------: | :-----------------: |
+| ChA     | GPIO 4     | GPIO 5              |
+| ChB     | GPIO 6     | GPIO 25             |
+| ChC     | GPIO 8     | GPIO 9              |
+| ChD     | GPIO 12    | GPIO 13             |
 
 ## Compile your own version
 To compile your own build you need to have installed C/C++ RPi Pico toolchain. Consult [Getting started guide](https://datasheets.raspberrypi.org/pico/getting-started-with-pico.pdf) on how to prepare your environment.
@@ -75,14 +106,21 @@ More the one period of the input signal can be sensed and thus increasing the ga
 
 
 #### Changing the pinout
-You can change the input signal pin and the LED pin by changing INPUT_SIGNAL_GPIO and LED_PIN constants.
+You can change the input signal pin for up to 4 channels and indicator LED pins by changing INPUT_SIGNALx_GPIO and INPUT_SIGNALx_LEDGPIO constants.
 
 ```
-#define INPUT_SIGNAL_GPIO 16
-#define LED_PIN 25
+#define INPUT_SIGNALA_GPIO 4
+#define INPUT_SIGNALA_LEDGPIO 5
+#define INPUT_SIGNALB_GPIO 6
+#define INPUT_SIGNALB_LEDGPIO 25
+#define INPUT_SIGNALC_GPIO 8
+#define INPUT_SIGNALC_LEDGPIO 9
+#define INPUT_SIGNALD_GPIO 12
+#define INPUT_SIGNALD_LEDGPIO 13
 ```
 
 NOTE: External clock must be connected to GPIO20 (default) or GPIO22.
+
 
 
 ## Using external clock with PLL
