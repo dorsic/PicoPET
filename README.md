@@ -28,15 +28,14 @@ The code can be modified (see below) to output:
 
 Examle output for timemarks
 ```
-1.999992940	 ChB
 3.999672500	 ChC
-2.999989410	 ChB
+3.999989410	 ChB
 4.999672500	 ChC
-3.999985890	 ChB
+4.999985890	 ChB
 5.999672500	 ChC
-4.999982350	 ChB
+5.999982350	 ChB
 6.999672500	 ChC
-5.999978820	 ChB
+6.999978820	 ChB
 ```
 
 Indicator GPIOs will output 10 Hz signal while channel input HIGH. You will see pulsing led on 1 PPS 50-50 duty cycle input or just one blink for short pulse (<100ms) PPS input.
