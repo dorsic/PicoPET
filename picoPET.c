@@ -32,11 +32,12 @@
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "hardware/pll.h"
-#include "picoPET_sp.pio.h"
-#include "picoPET_mp.pio.h"
 #include "hardware/xosc.h"
 #include "hardware/clocks.h"
 #include "hardware/vreg.h"
+#include "picoPET_sp.pio.h"
+#include "picoPET_mp.pio.h"
+#include "indicator_led.pio.h"
 
 
 // INPUT CLOCK SOURECE REFERENCE
@@ -46,7 +47,7 @@
 //#define CLK_SRC_EXT_CLOCK_PLL           // external clock on XIN with PLL, needs HW modification, max. 25 MHz
 
 // PLL SETTINGS
-#define SYS_PLL_FREQ 250*MHZ              // slightly overclocked from default 125 MHz; NOTE not arbitrary freq possible. See RP2040 datasheet
+#define SYS_PLL_FREQ 200*MHZ              // slightly overclocked from default 125 MHz; NOTE not arbitrary freq possible. See RP2040 datasheet
 #define CORE_VOLTAGE VREG_VOLTAGE_1_20    // consider higher core voltage for higher PLL, default is 1.1V
 
 // OUTPUT SETTINGS
@@ -57,13 +58,54 @@
 #define AVG_PERIODS 1                   // number of periods to average; has to at least 1, for steady results use odd numbers 1, 3, 5...
 
 #define SM_COUNT 4
-#define INPUT_SIGNAL1_GPIO 13
-#define INPUT_SIGNAL2_GPIO 14
-#define INPUT_SIGNAL3_GPIO 17
-#define INPUT_SIGNAL4_GPIO 18
-#define LED_PIN 25
+#define INPUT_SIGNALA_GPIO 4
+#define INPUT_SIGNALA_LEDGPIO 5
+#define INPUT_SIGNALB_GPIO 6
+#define INPUT_SIGNALB_LEDGPIO 25
+#define INPUT_SIGNALC_GPIO 8
+#define INPUT_SIGNALC_LEDGPIO 9
+#define INPUT_SIGNALD_GPIO 12
+#define INPUT_SIGNALD_LEDGPIO 13
+
+struct PetInput
+{
+    uint input_gpio;
+    uint led_gpio;
+    char* name;
+    PIO pio;
+    uint smc;
+    uint smi;
+    uint64_t tm;
+    double ts;
+} inputs[SM_COUNT];
 
 uint clk_src_freq = 10*MHZ;             // change this only if CLK_SRC_EXT_CLOCK defined
+uint8_t first_sensed_input = 255;
+
+void inputs_init() {
+    inputs[0].input_gpio = INPUT_SIGNALA_GPIO;
+    inputs[0].led_gpio = INPUT_SIGNALA_LEDGPIO;
+    inputs[0].name = "ChA";
+    if (SM_COUNT > 1) {
+        inputs[1].input_gpio = INPUT_SIGNALB_GPIO;
+        inputs[1].led_gpio = INPUT_SIGNALB_LEDGPIO;
+        inputs[1].name = "ChB";
+    }
+    if (SM_COUNT > 2) {
+        inputs[2].input_gpio = INPUT_SIGNALC_GPIO;
+        inputs[2].led_gpio = INPUT_SIGNALC_LEDGPIO;
+        inputs[2].name = "ChC";
+    }
+    if (SM_COUNT > 3) {
+        inputs[3].input_gpio = INPUT_SIGNALD_GPIO;
+        inputs[3].led_gpio = INPUT_SIGNALD_LEDGPIO;
+        inputs[3].name = "ChD";
+    }
+    for (uint8_t i = 0; i < SM_COUNT; i++) {
+        inputs[i].tm = 0;
+        inputs[i].ts = 0.0;
+    }
+}
 
 void configure_clocks() {
     #if defined CLK_SRC_XOSC
@@ -95,32 +137,49 @@ void configure_clocks() {
     #endif
 }
 
-void countpet_forever(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
+void countpet_forever(PIO pio, uint sm, uint offset, uint pin) {
     #if AVG_PERIODS == 1
-        picopet_sp_program_init(pio, sm, offset, pin, led_pin);
+        picopet_sp_program_init(pio, sm, offset, pin);
     #else
-        picopet_mp_program_init(pio, sm, offset, pin, led_pin);
+        picopet_mp_program_init(pio, sm, offset, pin);
     #endif
     pio_sm_set_enabled(pio, sm, true);
     pio->txf[sm] = AVG_PERIODS-1; 
 }
 
+void led_indicate_forever(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
+    indicator_led_program_init(pio, sm, offset, pin, led_pin);
+    pio_sm_set_enabled(pio, sm, true);
+    pio->txf[sm] = clk_src_freq/20;         // max led blinking frequency will be 10 Hz
+}
+
 void configure_pios() {
     // program the PIOs
-    uint off[SM_COUNT];
+    uint off[2];
+    uint lind[2];
     #if AVG_PERIODS == 1
-        off[0] = pio_add_program(pio0, &picopet_sp_program);
-        off[1] = pio_add_program(pio1, &picopet_sp_program);
-        off[2] = pio_add_program(pio0, &picopet_sp_program);
-        off[3] = pio_add_program(pio1, &picopet_sp_program);
+        for (uint8_t i = 0; i < SM_COUNT; i++) {
+            inputs[i].pio = (i % 2 == 0)? pio0: pio1;
+            off[i%2] = pio_add_program(inputs[i].pio, &picopet_sp_program);
+            lind[i%2] = pio_add_program(inputs[i].pio, &indicator_led_program);
+        }
     #else
-        uint offset = pio_add_program(pio, &picopet_mp_program);
+        for (uint8_t i = 0; i < SM_COUNT; i++) {
+            inputs[i].pio = (i % 2 == 0)? pio0: pio1;
+            off[i%2] = pio_add_program(inputs[i].pio, &picopet_mp_program);
+            lind[i%2] = pio_add_program(inputs[i].pio, &indicator_led_program);
+        }
     #endif
-    countpet_forever(pio0, 0, off[0], INPUT_SIGNAL1_GPIO, LED_PIN);
-    countpet_forever(pio1, 0, off[1], INPUT_SIGNAL2_GPIO, LED_PIN);
-    countpet_forever(pio0, 1, off[2], INPUT_SIGNAL3_GPIO, LED_PIN);
-    countpet_forever(pio1, 1, off[3], INPUT_SIGNAL4_GPIO, LED_PIN);
+    for (uint8_t i = 0; i < SM_COUNT; i++) {
+        inputs[i].smc = ((2*i) / 2) - (i%2);
+        inputs[i].smi = ((2*i) / 2) - (i%2) + 1;
+        countpet_forever(inputs[i].pio, inputs[i].smc, off[i%2], inputs[i].input_gpio);
+        led_indicate_forever(inputs[i].pio, inputs[i].smi, lind[i%2], inputs[i].input_gpio, inputs[i].led_gpio);
+//        countpet_forever(inputs[i].pio, inputs[i].smc, off[i], inputs[i].input_gpio);
+//        led_indicate_forever(inputs[i].pio, inputs[i].smi, lind[i], inputs[i].input_gpio, inputs[i].led_gpio);
+    }
 }
+
 
 int main() {
     vreg_set_voltage(CORE_VOLTAGE);
@@ -128,22 +187,25 @@ int main() {
     clocks_init();
     configure_clocks();
     stdio_init_all();
+
+    inputs_init();
     configure_pios();
+    sleep_ms(2000);             // wait 1s to allow connecting USB
 
-    uint64_t tm[SM_COUNT];
-    double ts[SM_COUNT];
-    for (uint8_t i = 0; i < SM_COUNT; i++) {
-        tm[i] = 0;
-        ts[i] = 0.0;
-    }
+    #if defined OUTPUT_CYCLE_COUNT          // write header to output
+        printf("COUNT\t CHANNEL\n");    
+    #elif defined OUTPUT_FREQUENCY
+        printf("FREQ\t CHANNEL\n");
+    #elif defined OUTPUT_TIMEMARK
+        printf("TIMEMARK\t CHANNEL\n");
+    #else
+        printf("DEBUG\n");
+    #endif
 
-    PIO pio;
-    uint32_t cnt = MHZ;
     while (true) {
         for (uint8_t i = 0; i < SM_COUNT; i++) {
-            pio = (i % 2 == 0) ? pio0 : pio1;
-            if (!pio_sm_is_rx_fifo_empty(pio, i/2)) {
-                uint32_t clk_cnt = pio_sm_get(pio, i/2);            // read the register from ASM code
+            if (!pio_sm_is_rx_fifo_empty(inputs[i].pio, inputs[i].smc)) {
+                uint32_t clk_cnt = pio_sm_get(inputs[i].pio, inputs[i].smc);            // read the register from ASM code
                 clk_cnt = ~clk_cnt;                                // negate the received value
                 uint32_t clk_cor = 0;
                 // PIO CALIBRATION CORRECTIONS
@@ -153,22 +215,30 @@ int main() {
                     clk_cor = 2*(clk_cnt + 1.5*AVG_PERIODS + 1.5);
                 #endif
                 #if defined OUTPUT_CYCLE_COUNT
-                    printf("%i\t %u\n", i, clk_cnt);
+                    printf("%u\t %s\n", clk_cor, inputs[i].name);
                 #elif defined OUTPUT_FREQUENCY
                     double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
-                    printf("%i\t %.6f\n", i, fc);
+                    printf("%.6f\t %s\n", fc, inputs[i].name);
                 #elif defined OUTPUT_TIMEMARK
-                    tm[i] = tm[i] + clk_cor;
+                    if (first_sensed_input == 255) {
+                        // save the first sensed impulse input for later use
+                        // this happens only once
+                        first_sensed_input = i;
+                    }
+                    if (inputs[i].tm == 0 && first_sensed_input != i && first_sensed_input != 255) {
+                        // offset the start of the timescale by the timemark of the first sensed input
+                        // this happens only once for each input
+                        inputs[i].tm = inputs[first_sensed_input].tm;
+                    }
                     uint64_t rem;
                     uint64_t div;
-                    div = divmod_u64u64_rem(tm[i], (uint64_t) clk_src_freq, &rem);
-                    ts[i] = (double)div + (double)((uint32_t)rem)/(double)clk_src_freq;
-                    printf("%i\t %llu\t %.9f\t ", i, tm[i], ts[i]);
-                    for (uint8_t x = 0; x < SM_COUNT; x++) {
-                        printf("%x\t %u\t %.10f\t ", x, tm[x], ts[x]);
-                    }
-                    printf("\n");
+                    inputs[i].tm += clk_cor;
+                    div = divmod_u64u64_rem(inputs[i].tm, (uint64_t) clk_src_freq, &rem);
+                    inputs[i].ts = (double)div + (double)((uint32_t)rem)/(double)clk_src_freq;
+                    printf("%.9f\t %s\n", i, inputs[i].ts, inputs[i].name);
                 #else
+                    // this is a DEBUG output
+                    uint32_t cnt = MHZ;
                     tm[i] = tm[i] + clk_cor;
                     uint64_t rem;
                     uint64_t div;
@@ -179,14 +249,6 @@ int main() {
                     printf("@%u\t %i\t %u\t %u\t %.6f\t %.6f\t %u\t %.10f\t", clk_src_freq, i, clk_cnt, clk_cor, fs, fc, tm[i], ts[i]);
                     for (uint8_t x = 0; x < SM_COUNT; x++) {
                         printf("%u\t %u\t %.10f\t ", x, tm[x], ts[x]);
-                    }
-                    printf("\n");
-                    if (cnt >= 100) {
-                        uint64_t a = time_us_64();
-                        printf("$ %u\n", a);
-                        cnt = 0;
-                    } else {
-                        cnt++;
                     }
                 #endif
             }

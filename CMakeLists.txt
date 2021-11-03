@@ -14,6 +14,8 @@ add_executable(picoPET
 # pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/picoDIV.pio)
 pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/picoPET_sp.pio)
 pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/picoPET_mp.pio)
+pico_generate_pio_header(picoPET ${CMAKE_CURRENT_LIST_DIR}/indicator_led.pio)
+
 
 target_sources(picoPET PRIVATE picoPET.c)
 

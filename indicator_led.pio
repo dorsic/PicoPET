@@ -1,0 +1,42 @@
+.program indicator_led
+
+; Led indicator
+; Blinks the led indicator on input signal HIGH.
+; Restricts the max frequency of blinking by reading the value from main program.
+; Setting this value to sys_clk_freq/20 will limit the blinking to about 10 Hz.
+;
+; Version:
+; 02-Nov-2021  Marek Dorsic (.md)
+;
+
+.side_set 1
+
+    pull block      side 1     ; Turn the LED ON and wait for the main program to write number of periods to count
+    out y, 32       side 0     ; Turn the LED OFF and read the number of periods to X
+    mov x y         side 0     ; Set the working X register
+
+.wrap_target 
+    wait 1 pin 0    side 0     ; Wait for input pin to go HIGH with LED off
+low:
+    jmp x-- low     side 0     ; Turn the LED OFF and decrement X until enought clock cycles passed
+    mov x y         side 0     ; Restore the value in X register
+high:
+    jmp x-- high    side 1     ; Turn the LED ON and decrement X until enought clock cycles passed
+    mov x y         side 1     ; Restore the value in X register
+.wrap
+
+    
+
+% c-sdk {
+// this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
+
+void indicator_led_program_init(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
+   pio_gpio_init(pio, led_pin);
+   pio_sm_set_consecutive_pindirs(pio, sm, led_pin, 1, true);
+   pio_sm_config c = indicator_led_program_get_default_config(offset);
+   sm_config_set_in_pins(&c, pin);
+   sm_config_set_sideset_pins(&c, led_pin);
+   sm_config_set_sideset(&c, 1, false, false);
+   pio_sm_init(pio, sm, offset, &c);
+}
+%}

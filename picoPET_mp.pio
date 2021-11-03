@@ -6,49 +6,42 @@
 ; its value from max value (2**32).
 ; OSR register is initialized on beginning with number of periods
 ; that should be counted.
-; The LED (pin 25) blinks with input signal
 ;
 ; Version:
-; 17-Oct-2021  Marek Dorsic (.md)
+; 02-Nov-2021  Marek Dorsic (.md)
 ;
 
-.side_set 1
+    pull block              ; Wait for the main program to write number of periods to count
+    out y, 32               ; Read the number of periods to X
+    mov osr, y              ; Store the number of periods in OSR
 
-    pull block side 0       ; Wait for the main program to write number of periods to count
-    out y, 32 side 0        ; Read the number of periods to X
-    mov osr, y side 0       ; Store the number of periods in OSR
-
-wait 1 pin 0 side 0       ; wait for rising edge and turn off the LED (with "side 0")
+    wait 1 pin 0            ; wait for rising edge and turn off the LED (with "side 0")
 
 .wrap_target
-    mov y, osr side 1       ; Set Y to number of periods
-    mov x, ~NULL side 1     ; set X to be 2^32 and turn on the LED because rising edge detected first time since program started
+    mov y, osr              ; Set Y to number of periods
+    mov x, ~NULL            ; set X to be 2^32 and turn on the LED because rising edge detected first time since program started
 high:
-    jmp x-- highd side 1    ; decrement X and go waiting while pin HIGH (until falling edge)
+    jmp x-- highd           ; decrement X and go waiting while pin HIGH (until falling edge)
 highd:
-    jmp PIN high side 1     ; loop until pin HIGH
+    jmp pin high            ; loop until pin HIGH
 low:
-    jmp PIN period side 0   ; if next rising edge (pin HIGH) goto write, but first time on this instruction means falling edge so turn off LED
-    jmp x-- low side 0      ; else decrement and loop
+    jmp pin period          ; if next rising edge (pin HIGH) goto write, but first time on this instruction means falling edge so turn off LED
+    jmp x-- low             ; else decrement and loop
 period:
-    jmp !y write side 0     ; if enougth periods counted go send X to maing program
-    jmp y-- high side 0     ; if not enought periods go again waiting while pin HIGH
+    jmp !y write            ; if enougth periods counted go send X to maing program
+    jmp y-- high            ; if not enought periods go again waiting while pin HIGH
 write:
-    mov isr, x side 1       ; move X to output register, also rising edge detected so turn on the LED
-    push noblock side 1     ; push ISR value to main routine
+    mov isr, x              ; move X to output register, also rising edge detected so turn on the LED
+    push noblock            ; push ISR value to main routine
 .wrap
 
 
 % c-sdk {
 // this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
 
-void picopet_mp_program_init(PIO pio, uint sm, uint offset, uint pin, uint led_pin) {
-   pio_gpio_init(pio, led_pin);
-   pio_sm_set_consecutive_pindirs(pio, sm, led_pin, 1, true);
+void picopet_mp_program_init(PIO pio, uint sm, uint offset, uint pin) {
    pio_sm_config c = picopet_mp_program_get_default_config(offset);
    sm_config_set_in_pins(&c, pin);
-   sm_config_set_sideset_pins(&c, led_pin);
-   sm_config_set_sideset(&c, 1, false, false);
    sm_config_set_jmp_pin(&c, pin);
    pio_sm_init(pio, sm, offset, &c);
 }
