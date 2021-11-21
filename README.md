@@ -174,6 +174,7 @@ to
 - External 10 MHz clock source can be switched on using hardware switch. USB output still active.
 - External signal sensed using GPIO 11 (better would be GPIO22 :( ). Green indication led blinks when signal connected, steadily on when used as reference.
 - System PLL configured for 240 MHz with 12 MHz reference and 200MHz with 10 MHz reference, giving 10ns resolution @10 MHz reference signal.
+- Configurable divided clock output using internal switches.
 
 ![PicoPET Hammond front](PicoPET-Hammond1.jpeg)
 ![PicoPET Hammond back](PicoPET-Hammond2.jpeg)
