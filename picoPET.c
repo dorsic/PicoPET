@@ -1,10 +1,10 @@
 /*
     PicoPET is a simple time interval counter that outputs number of clk_sys cycles 
-    between two pulses on GPIO16 (pin 21) to USB/serial port. It has a resolution of 2 clock cycles.
+    between two pulses and outputs to USB/serial port. It has a resolution of 2 system clock cycles.
 
-    USB output can be configured and works only if clk_sys is above 48 MHz. 
+    USB and UART output is available but USB works only if clk_sys is above 48 MHz. 
     If below only serial output is working. You may change the output in CMakeLists.txt file.
-    Serial output uses 115200 baud rate.
+    Serial output uses default 115200 baud rate.
     
     Options for clocks are:
         - external clock up to 50MHz connected to GPIO20 (pin 26)
@@ -16,124 +16,147 @@
 
 
     WIRING:
-        - INPUT pulse pin GPIO16 (pin 21, max 3.3V)
+        - ChA input - GPIO5, (INPUT_SIGNALA_GPIO)
+        - ChB input - GPIO6, (INPUT_SIGNALB_GPIO)
+        - ChC input - GPIO9, (INPUT_SIGNALC_GPIO)
+        - ChD input - GPIO13, (INPUT_SIGNALD_GPIO)
         - EXT CLOCK input pin GPIO20 (pin 26) (max. 50 MHz, 3.3V square)
         - Serial output pin GPIO0 (pin 1)
 
     Version:
     26-May-2021  Marek Dorsic (.md)
+    21-Now-2021  Marek Dorsic (.md) - the Hammond enclosure version
 */
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include "picoPET.h"
 #include "pico/stdlib.h"
+#include "pico/stdio_uart.h"
 #include "pico/divider.h"
+#include "pico/int64_ops.h"
+#include "pico/multicore.h"
 #include "hardware/timer.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
 #include "hardware/pll.h"
 #include "hardware/xosc.h"
-#include "hardware/clocks.h"
 #include "hardware/vreg.h"
+#include "hardware/irq.h"
+#include "hardware/uart.h"
 #include "picoPET_sp.pio.h"
 #include "picoPET_mp.pio.h"
 #include "indicator_led.pio.h"
+#include "extClk.h"
+#include "counter.h"
+
+// CORE 1 - initialization and monitoring
+
+uint xosc_mhz = XOSC_MHZ;
+uint32_t clk_src_freq = XOSC_MHZ * MHZ;
+uint div_freq = 1;
+struct PetInput inputs[SM_COUNT];
+
+static int uart_gnss_rxstate = 0;
+static int gnss_state = -1;        // -1 - unknown, 0 - not fixed, 1 - GNSS FIX
+static int ext_clk_state = 0;     // -1 - not connected, 0 - connected, 1 - connected and used
+static bool indleds_state = false;       // 0 - LOW, 1 - HIGH (used for blinking with timer)
+static char uart_buff[8];
 
 
-// INPUT CLOCK SOURECE REFERENCE
-//#define CLK_SRC_XOSC                  // internal 12MHz TCXO
-#define CLK_SRC_XOSC_PLL               // PLL sourced from internal TCXO
-//#define CLK_SRC_EXT_CLOCK             // external clock on PIN20, max. 50 MHz, set clk_src_freq below appropriately
-//#define CLK_SRC_EXT_CLOCK_PLL           // external clock on XIN with PLL, needs HW modification, max. 25 MHz
+void pins_init() {
+    gpio_init(25);
+    gpio_set_dir(25, GPIO_OUT);
 
-// PLL SETTINGS
-#define SYS_PLL_FREQ 200*MHZ              // slightly overclocked from default 125 MHz; NOTE not arbitrary freq possible. See RP2040 datasheet
-#define CORE_VOLTAGE VREG_VOLTAGE_1_20    // consider higher core voltage for higher PLL, default is 1.1V
+    gpio_init(CLKREF_EXT_INDICATOR_GPIO);
+    gpio_set_dir(CLKREF_EXT_INDICATOR_GPIO, GPIO_OUT);
+    gpio_init(GNSS_LOCKED_INDICATOR_GPIO);
+    gpio_set_dir(GNSS_LOCKED_INDICATOR_GPIO, GPIO_OUT);
 
-// OUTPUT SETTINGS
-//#define OUTPUT_FREQUENCY
-#define OUTPUT_TIMEMARK
-//#define OUTPUT_CYCLE_COUNT
+    gpio_init(INPUT_SIGNALA_GPIO);
+    gpio_set_dir(INPUT_SIGNALA_GPIO, GPIO_IN);
+    gpio_init(INPUT_SIGNALA_LEDGPIO);
+    gpio_set_dir(INPUT_SIGNALA_LEDGPIO, GPIO_OUT);
+    gpio_init(INPUT_SIGNALB_GPIO);
+    gpio_set_dir(INPUT_SIGNALB_GPIO, GPIO_IN);
+    gpio_init(INPUT_SIGNALB_LEDGPIO);
+    gpio_set_dir(INPUT_SIGNALB_LEDGPIO, GPIO_OUT);
+    gpio_init(INPUT_SIGNALC_GPIO);
+    gpio_set_dir(INPUT_SIGNALC_GPIO, GPIO_IN);
+    gpio_init(INPUT_SIGNALC_LEDGPIO);
+    gpio_set_dir(INPUT_SIGNALC_LEDGPIO, GPIO_OUT);
+    gpio_init(INPUT_SIGNALD_GPIO);
+    gpio_set_dir(INPUT_SIGNALD_GPIO, GPIO_IN);
+    gpio_init(INPUT_SIGNALD_LEDGPIO);
+    gpio_set_dir(INPUT_SIGNALD_LEDGPIO, GPIO_OUT);
 
-#define AVG_PERIODS 1                   // number of periods to average; has to at least 1, for steady results use odd numbers 1, 3, 5...
-
-#define SM_COUNT 4
-#define INPUT_SIGNALA_GPIO 4
-#define INPUT_SIGNALA_LEDGPIO 5
-#define INPUT_SIGNALB_GPIO 6
-#define INPUT_SIGNALB_LEDGPIO 25
-#define INPUT_SIGNALC_GPIO 8
-#define INPUT_SIGNALC_LEDGPIO 9
-#define INPUT_SIGNALD_GPIO 12
-#define INPUT_SIGNALD_LEDGPIO 13
-
-struct PetInput
-{
-    uint input_gpio;
-    uint led_gpio;
-    char* name;
-    PIO pio;
-    uint smc;
-    uint smi;
-    uint64_t tm;
-    double ts;
-} inputs[SM_COUNT];
-
-uint clk_src_freq = 10*MHZ;             // change this only if CLK_SRC_EXT_CLOCK defined
-uint8_t first_sensed_input = 255;
-
-void inputs_init() {
-    inputs[0].input_gpio = INPUT_SIGNALA_GPIO;
-    inputs[0].led_gpio = INPUT_SIGNALA_LEDGPIO;
-    inputs[0].name = "ChA";
-    if (SM_COUNT > 1) {
-        inputs[1].input_gpio = INPUT_SIGNALB_GPIO;
-        inputs[1].led_gpio = INPUT_SIGNALB_LEDGPIO;
-        inputs[1].name = "ChB";
+    uint8_t swio[] = {SW1_GPIO, SW2_GPIO, SW3_GPIO, SW4_GPIO};
+    for (uint8_t i=1; i < 4; i++) {
+        gpio_init(swio[i]);
+        gpio_set_dir(swio[i], GPIO_IN);
+        gpio_pull_up(swio[i]);
     }
-    if (SM_COUNT > 2) {
-        inputs[2].input_gpio = INPUT_SIGNALC_GPIO;
-        inputs[2].led_gpio = INPUT_SIGNALC_LEDGPIO;
-        inputs[2].name = "ChC";
-    }
-    if (SM_COUNT > 3) {
-        inputs[3].input_gpio = INPUT_SIGNALD_GPIO;
-        inputs[3].led_gpio = INPUT_SIGNALD_LEDGPIO;
-        inputs[3].name = "ChD";
-    }
-    for (uint8_t i = 0; i < SM_COUNT; i++) {
-        inputs[i].tm = 0;
-        inputs[i].ts = 0.0;
+
+    gpio_set_function(GNSS_TXGPIO, GPIO_FUNC_UART);
+    gpio_set_function(GNSS_RXGPIO, GPIO_FUNC_UART);
+}
+
+uint xosc_div_setting() {
+    uint8_t s1 = gpio_get(SW2_GPIO);
+    uint8_t s2 = gpio_get(SW3_GPIO);
+    uint8_t s3 = gpio_get(SW4_GPIO);
+    uint8_t s = s1 + (s2 << 1) + (s3 << 2);
+    printf("Switch Setting %d (%d%d%d) \n", s, s1, s2, s3);
+    switch (s) {
+        case DIVF_XOSC:
+            return XOSC_MHZ;
+        case DIVF_1:
+            return 1;
+        case DIVF_10:
+            return 10;
+        case DIVF_100:
+            return 100;
+        case DIVF_500:
+            return 500;
+        case DIVF_1k:
+            return 1000;
+        case DIVF_2k:
+            return 2000;
+        case DIVF_1M:
+            return MHZ;
+        default:
+            return 12345;
     }
 }
 
-void configure_clocks() {
+void configure_clocks(uint div_freq) {
+    uint xosc_divider = xosc_mhz*MHZ/div_freq;
+
     #if defined CLK_SRC_XOSC
         xosc_init();
-        clk_src_freq = 12000000;  // 12MHz is the internal XOSC
+        clk_src_freq = XOSC_MHZ*MHZ;  // 12MHz is the internal XOSC
         clock_configure(clk_ref, CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC, 0, clk_src_freq, clk_src_freq);
         clock_configure(clk_sys, CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLK_REF, CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clk_src_freq, clk_src_freq);
-//        clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, clk_src_freq, clk_src_freq);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);    // put the TCXO clock on pin 21
+        clock_gpio_init(DIVCLK_GPIO, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, xosc_divider);
+        clock_configure(clk_adc, 0, CLOCKS_CLK_ADC_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, XOSC_MHZ*MHZ, XOSC_MHZ*MHZ);
         pll_deinit(pll_sys);
     #elif defined CLK_SRC_EXT_CLOCK
         // configure the clk_ref to run from pin GPIO20 (pin 26)
-        clock_configure_gpin(clk_ref, 20, clk_src_freq, clk_src_freq);
-        clock_configure_gpin(clk_sys, 20, clk_src_freq, clk_src_freq);
+        clock_configure_gpin(clk_ref, CLKREF_GNSS_GPIO, clk_src_freq, clk_src_freq);
+        clock_configure_gpin(clk_sys, CLKREF_GNSS_GPIO, clk_src_freq, clk_src_freq);
         clock_configure(clk_peri, 0, CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, clk_src_freq, clk_src_freq);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT1_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, 1);   // put the external ref. clock on pin 21
+        clock_configure(clk_adc, 0, CLOCKS_CLK_ADC_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, XOSC_MHZ*MHZ, XOSC_MHZ*MHZ);
+        clock_gpio_init(DIVCLK_GPIO, CLOCKS_CLK_GPOUT1_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, xosc_divider);
         xosc_disable();
         pll_deinit(pll_sys);
-    #elif defined CLK_SRC_XOSC_PLL
+    #else
         xosc_init();
         clk_src_freq = SYS_PLL_FREQ;
         set_sys_clock_khz(SYS_PLL_FREQ/1000, true);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, XOSC_MHZ*MHZ);
-    #else   //CLK_SRC_EXT_CLOCK_PLL
-        xosc_init();
-        clk_src_freq = SYS_PLL_FREQ;
-        set_sys_clock_khz(clk_src_freq/1000, true);
-        clock_gpio_init(21, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1000);     // put the external ref. clock on pin 21
+        clock_gpio_init(DIVCLK_GPIO, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, xosc_divider);
+        clock_configure_gpin(clk_adc, CLKREF_GNSS_GPIO, XOSC_MHZ*MHZ, XOSC_MHZ*MHZ);
+//        clock_configure(clk_adc, 0, CLOCKS_CLK_ADC_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0, XOSC_MHZ*MHZ, XOSC_MHZ*MHZ);
     #endif
 }
 
@@ -154,7 +177,6 @@ void led_indicate_forever(PIO pio, uint sm, uint offset, uint pin, uint led_pin)
 }
 
 void configure_pios() {
-    // program the PIOs
     uint off[2];
     uint lind[2];
     #if AVG_PERIODS == 1
@@ -175,83 +197,127 @@ void configure_pios() {
         inputs[i].smi = ((2*i) / 2) - (i%2) + 1;
         countpet_forever(inputs[i].pio, inputs[i].smc, off[i%2], inputs[i].input_gpio);
         led_indicate_forever(inputs[i].pio, inputs[i].smi, lind[i%2], inputs[i].input_gpio, inputs[i].led_gpio);
-//        countpet_forever(inputs[i].pio, inputs[i].smc, off[i], inputs[i].input_gpio);
-//        led_indicate_forever(inputs[i].pio, inputs[i].smi, lind[i], inputs[i].input_gpio, inputs[i].led_gpio);
     }
 }
 
+void on_uart_rx() {
+    while (uart_is_readable(uart0)) {
+        char ch = uart_getc(uart0);
+//        printf("%c", ch);
+        switch (uart_gnss_rxstate) {
+            case 0:            
+                    uart_gnss_rxstate = (ch =='$') ? 1: 0;
+                    break;
+            case 1 ... 5:
+                    uart_buff[uart_gnss_rxstate-1] = ch;
+                    uart_buff[uart_gnss_rxstate] = '\0';
+                    uart_gnss_rxstate++;
+                    break;
+            case 10 ... 15:
+                    uart_gnss_rxstate = (ch ==',') ? uart_gnss_rxstate+1: uart_gnss_rxstate;
+                    uart_gnss_rxstate = (ch =='$') ? 1: uart_gnss_rxstate;
+                    break;
+            case 16:
+                    gnss_state = ((uint8_t)ch)-48;
+//                    printf("\ngnss_state %u\n", gnss_state);
+                    uart_gnss_rxstate = 0;
+            default:
+                    uart_gnss_rxstate = 0;
 
-int main() {
-    vreg_set_voltage(CORE_VOLTAGE);
-    xosc_init();
-    clocks_init();
-    configure_clocks();
-    stdio_init_all();
-
-    inputs_init();
-    configure_pios();
-    sleep_ms(2000);             // wait 1s to allow connecting USB
-
-    #if defined OUTPUT_CYCLE_COUNT          // write header to output
-        printf("COUNT\t CHANNEL\n");    
-    #elif defined OUTPUT_FREQUENCY
-        printf("FREQ\t CHANNEL\n");
-    #elif defined OUTPUT_TIMEMARK
-        printf("TIMEMARK\t CHANNEL\n");
-    #else
-        printf("DEBUG\n");
-    #endif
-
-    while (true) {
-        for (uint8_t i = 0; i < SM_COUNT; i++) {
-            if (!pio_sm_is_rx_fifo_empty(inputs[i].pio, inputs[i].smc)) {
-                uint32_t clk_cnt = pio_sm_get(inputs[i].pio, inputs[i].smc);            // read the register from ASM code
-                clk_cnt = ~clk_cnt;                                // negate the received value
-                uint32_t clk_cor = 0;
-                // PIO CALIBRATION CORRECTIONS
-                #if AVG_PERIODS == 1
-                    clk_cor = (clk_cnt+2)*2;
-                #else
-                    clk_cor = 2*(clk_cnt + 1.5*AVG_PERIODS + 1.5);
-                #endif
-                #if defined OUTPUT_CYCLE_COUNT
-                    printf("%u\t %s\n", clk_cor, inputs[i].name);
-                #elif defined OUTPUT_FREQUENCY
-                    double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
-                    printf("%.6f\t %s\n", fc, inputs[i].name);
-                #elif defined OUTPUT_TIMEMARK
-                    if (first_sensed_input == 255) {
-                        // save the first sensed impulse input for later use
-                        // this happens only once
-                        first_sensed_input = i;
-                    }
-                    if (inputs[i].tm == 0 && first_sensed_input != i && first_sensed_input != 255) {
-                        // offset the start of the timescale by the timemark of the first sensed input
-                        // this happens only once for each input
-                        inputs[i].tm = inputs[first_sensed_input].tm;
-                    }
-                    uint64_t rem;
-                    uint64_t div;
-                    inputs[i].tm += clk_cor;
-                    div = divmod_u64u64_rem(inputs[i].tm, (uint64_t) clk_src_freq, &rem);
-                    inputs[i].ts = (double)div + (double)((uint32_t)rem)/(double)clk_src_freq;
-                    printf("%.9f\t %s\n", i, inputs[i].ts, inputs[i].name);
-                #else
-                    // this is a DEBUG output
-                    uint32_t cnt = MHZ;
-                    tm[i] = tm[i] + clk_cor;
-                    uint64_t rem;
-                    uint64_t div;
-                    div = divmod_u64u64_rem(tm[i], (uint64_t) clk_src_freq, &rem);
-                    ts[i] = (double)div + (double)((uint32_t)rem)/(double)clk_src_freq;
-                    double fs = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cnt);
-                    double fc = ((double)clk_src_freq*(double)AVG_PERIODS)/((double)clk_cor);
-                    printf("@%u\t %i\t %u\t %u\t %.6f\t %.6f\t %u\t %.10f\t", clk_src_freq, i, clk_cnt, clk_cor, fs, fc, tm[i], ts[i]);
-                    for (uint8_t x = 0; x < SM_COUNT; x++) {
-                        printf("%u\t %u\t %.10f\t ", x, tm[x], ts[x]);
-                    }
-                #endif
+        }
+        if (uart_gnss_rxstate == 6) {
+            if  (strcmp((char*)"GNGGA", uart_buff)==0) {
+                uart_gnss_rxstate = 10;   // we are on the start of our $GPGGA sentence
+            } else {
+                uart_gnss_rxstate = 0;
             }
         }
     }
+}
+
+// CORE 1 - monitoring
+
+void switch_time_base(bool external) {
+    xosc_mhz = (external)? CLK_EXT_MHZ: XOSC_MHZ;
+    clk_src_freq = SYS_PLL_FREQ/XOSC_MHZ * xosc_mhz;
+    printf("Switching timebase to %u MHz, \n", xosc_mhz, external);
+    set_xosc_freq(xosc_mhz, div_freq);
+    printf("Switched timebase to %u MHz, %i \n", xosc_mhz, external);
+}
+
+bool update_status_leds_timer_callback(struct repeating_timer *t) {
+    indleds_state = !indleds_state;
+    bool gnssled = (gnss_state == 1)? 1: (gnss_state == 0)? indleds_state: 0;
+    bool extclkled = (ext_clk_state == 1)? 1: (ext_clk_state == 0)? indleds_state: 0;
+    gpio_put(GNSS_LOCKED_INDICATOR_GPIO, gnssled);
+    gpio_put(CLKREF_EXT_INDICATOR_GPIO, extclkled);
+}
+
+void monitor() {
+    // configure GNSS serial port for reading
+    stdin_uart_init();
+    uart_set_baudrate (uart0, GNSS_BAUDRATE);
+    uart_set_hw_flow(uart0, false, false);
+    uart_set_format(uart0, 8, 1, UART_PARITY_NONE);
+    uart_set_fifo_enabled(uart0, false);
+    irq_set_exclusive_handler(UART0_IRQ, on_uart_rx);
+    irq_set_enabled(UART0_IRQ, true);    
+    uart_set_irq_enables(uart0, true, false);
+
+    struct repeating_timer timer;
+    add_repeating_timer_ms(-100, update_status_leds_timer_callback, NULL, &timer);
+
+    int clk_ext_verify = 0;
+    while (true) {
+        // check ext ref signal availability
+        if (ext_clock_available()) {
+            clk_ext_verify ++;
+            // do not change state immediately, only after some iterations confirm it
+            if (clk_ext_verify >= 10) {
+                ext_clk_state = (ext_clk_state == 1)? 1: 0;
+                clk_ext_verify = 0;
+            }
+        } else {
+            clk_ext_verify--;
+            if (clk_ext_verify <= -10) {
+                clk_ext_verify = 0;
+                ext_clk_state = -1;
+            }
+        }
+
+        // do we need to check timebase, because manual switch selection changed?
+        int tb = get_timebase();
+        if ((tb > 0) && (ext_clk_state >= 0)) {
+            // if internal clk used change to ext
+            printf("Switch timebase to ext, %u -> 1\n", ext_clk_state);
+            switch_time_base(true);
+            ext_clk_state = 1;
+        } else if (tb < 0) {
+            // if ext clk used change to internal
+            printf("Switch timebase to int, %u\n", ext_clk_state);
+            switch_time_base(false);
+            ext_clk_state = -1;
+        }
+    }
+}
+
+// CORE 0 - timemarking/counter
+int main() {
+    vreg_set_voltage(CORE_VOLTAGE);
+    clocks_init();
+    stdio_init_all();
+    pins_init();
+    sleep_ms(2000);
+    div_freq = xosc_div_setting();
+    printf("Div Freq %d\n", div_freq);
+    configure_clocks(div_freq);
+    stdio_init_all();
+    inputs_init();
+    configure_pios();
+    sleep_ms(2000);             // wait 1s to allow connecting USB
+    printf("Div Freq %d\n", div_freq);
+
+
+    multicore_launch_core1(monitor);
+    do_count();
 }

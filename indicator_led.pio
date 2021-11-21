@@ -17,11 +17,11 @@
 
 .wrap_target 
     wait 1 pin 0    side 0     ; Wait for input pin to go HIGH with LED off
-low:
-    jmp x-- low     side 0     ; Turn the LED OFF and decrement X until enought clock cycles passed
-    mov x y         side 0     ; Restore the value in X register
 high:
-    jmp x-- high    side 1     ; Turn the LED ON and decrement X until enought clock cycles passed
+    jmp x-- high    side 0     ; Turn the LED OFF and decrement X until enought clock cycles passed
+    mov x y         side 0     ; Restore the value in X register
+low:
+    jmp x-- low     side 1     ; Turn the LED ON and decrement X until enought clock cycles passed
     mov x y         side 1     ; Restore the value in X register
 .wrap
 

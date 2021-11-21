@@ -44,7 +44,7 @@ Indicator GPIOs will output 10 Hz signal while channel input HIGH. You will see 
 
 - Connect input pulse signal one (or more) input channel GPIOs.
 - Connect external clock input to GPIO20 (pin 26).
-- Connect LED indicators for each channel to GPIO 5, 25, 9, 13
+- Connect LED indicators for each channel
 - Connect to GPIO0 (pin 1) for serial output (115200 bauds), optional.
 - PPS clock output available at GPIO21 (pin 27).
 
@@ -54,10 +54,10 @@ Note all Raspberry Pi Pico GPIOs are 3.3V only. Do not connect 5V signals unless
 
 | Channel | Input GPIO | Led indication GPIO |
 | ------- | :--------: | :-----------------: |
-| ChA     | GPIO 4     | GPIO 5              |
-| ChB     | GPIO 6     | GPIO 25             |
-| ChC     | GPIO 8     | GPIO 9              |
-| ChD     | GPIO 12    | GPIO 13             |
+| ChA     | GPIO 5     | GPIO 4              |
+| ChB     | GPIO 6     | GPIO 7              |
+| ChC     | GPIO 9     | GPIO 8              |
+| ChD     | GPIO 13    | GPIO 12             |
 
 ## Compile your own version
 To compile your own build you need to have installed C/C++ RPi Pico toolchain. Consult [Getting started guide](https://datasheets.raspberrypi.org/pico/getting-started-with-pico.pdf) on how to prepare your environment.
@@ -108,21 +108,21 @@ More the one period of the input signal can be sensed and thus increasing the ga
 
 #### Changing the pinout
 You can change the input signal pin for up to 4 channels and indicator LED pins by changing INPUT_SIGNALx_GPIO and INPUT_SIGNALx_LEDGPIO constants.
+Change the SM_COUNT to number of input channels required, this will free 2 PIOs for each unused channel.
 
 ```
-#define INPUT_SIGNALA_GPIO 4
-#define INPUT_SIGNALA_LEDGPIO 5
+#define SM_COUNT 2
+#define INPUT_SIGNALA_GPIO 5
+#define INPUT_SIGNALA_LEDGPIO 4
 #define INPUT_SIGNALB_GPIO 6
-#define INPUT_SIGNALB_LEDGPIO 25
-#define INPUT_SIGNALC_GPIO 8
-#define INPUT_SIGNALC_LEDGPIO 9
-#define INPUT_SIGNALD_GPIO 12
-#define INPUT_SIGNALD_LEDGPIO 13
+#define INPUT_SIGNALB_LEDGPIO 7
+#define INPUT_SIGNALC_GPIO 9
+#define INPUT_SIGNALC_LEDGPIO 8
+#define INPUT_SIGNALD_GPIO 13
+#define INPUT_SIGNALD_LEDGPIO 12
 ```
 
 NOTE: External clock must be connected to GPIO20 (default) or GPIO22.
-
-
 
 ## Using external clock with PLL
 Using external clock with PLL requires connecting the external clock signal to RP2040's XIN pin and also modify the Pico-SDK and set new frequency.
@@ -131,7 +131,7 @@ Using external clock with PLL requires connecting the external clock signal to R
 Connecting external clock to XIN is best achieved by removing the onboard XOSC and bypassing the XOSC ouput pad with nearest (e.g. GPIO10) pin.
 To upload new code to the Pico 12 MHz signal has to be used. 
 Convenient, reasonable stable 12 MHz 3.3V square signal can be obtained e.g. from the ublox GNSS modules. These use 48 MHz internal clock and 12 MHz is natural number divider so jitter is minimalized.
-![](IMG_6690.jpg)
+![HW_XIN_mod](IMG_6690.jpg)
 
 #### Pico-SDK modification
 New XOSC frequency of the external clock has to be configured in the Pico SDK. Make a new copy of the SDK and modify these files
@@ -166,3 +166,15 @@ to
                     XOSC_MHZ,
                     XOSC_MHZ);
 ```
+
+## The Hammond enclosure
+
+- Uses Ublox GPS output as 12 MHz reference clock instead of onboard TCXO.
+- GNSS locked stated sensed from NMEA GGA sentence. Red "locked" indication led blinks when unlock, steadily on when locked.
+- External 10 MHz clock source can be switched on using hardware switch. USB output still active.
+- External signal sensed using GPIO 11 (better would be GPIO22 :( ). Green indication led blinks when signal connected, steadily on when used as reference.
+- System PLL configured for 240 MHz with 12 MHz reference and 200MHz with 10 MHz reference, giving 10ns resolution @10 MHz reference signal.
+
+![PicoPET Hammond front](PicoPET-Hammond1.jpeg)
+![PicoPET Hammond back](PicoPET-Hammond2.jpeg)
+![PicoPET Hammond internals](PicoPET-Hammond3.jpeg)
