@@ -131,7 +131,7 @@ Using external clock with PLL requires connecting the external clock signal to R
 Connecting external clock to XIN is best achieved by removing the onboard XOSC and bypassing the XOSC ouput pad with nearest (e.g. GPIO10) pin.
 To upload new code to the Pico 12 MHz signal has to be used. 
 Convenient, reasonable stable 12 MHz 3.3V square signal can be obtained e.g. from the ublox GNSS modules. These use 48 MHz internal clock and 12 MHz is natural number divider so jitter is minimalized.
-![HW_XIN_mod](IMG_6690.jpg)
+![HW_XIN_mod](doc/IMG_6690.jpg)
 
 #### Pico-SDK modification
 New XOSC frequency of the external clock has to be configured in the Pico SDK. Make a new copy of the SDK and modify these files
@@ -174,9 +174,11 @@ to
 - External 10 MHz clock source can be switched on using hardware switch. USB output still active.
 - External signal sensed using GPIO 11 (better would be GPIO22 :( ). Green indication led blinks when signal connected, steadily on when used as reference.
 - System PLL configured for 240 MHz with 12 MHz reference and 200MHz with 10 MHz reference, giving 10ns resolution @10 MHz reference signal.
-- Configurable divided clock output using internal switches.
+- Configurable divided clock output frequency using internal switches.
+- [Schematic available](doc/Schematic_PicoPET.pdf)
 
-![PicoPET Hammond front](PicoPET-Hammond1.jpeg)
-![PicoPET Hammond back](PicoPET-Hammond2.jpeg)
-![PicoPET Hammond internals](PicoPET-Hammond3.jpeg)
-![PicoPET MDEV](PicoPET-Cal-MDEV.png)
+[PicoPET Hammond front](doc/PicoPET-Hammond1.jpeg)
+[PicoPET Hammond back](doc/PicoPET-Hammond2.jpeg)
+[PicoPET Hammond internals](doc/PicoPET-Hammond3.jpeg)
+[PicoPET MDEV](doc/PicoPET-Cal-MDEV.png)
+
