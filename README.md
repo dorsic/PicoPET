@@ -177,8 +177,8 @@ to
 - Configurable divided clock output frequency using internal switches.
 - [Schematic available](doc/Schematic_PicoPET.pdf)
 
-[PicoPET Hammond front](doc/PicoPET-Hammond1.jpeg)
-[PicoPET Hammond back](doc/PicoPET-Hammond2.jpeg)
-[PicoPET Hammond internals](doc/PicoPET-Hammond3.jpeg)
-[PicoPET MDEV](doc/PicoPET-Cal-MDEV.png)
+![PicoPET Hammond front](doc/PicoPET-Hammond1.jpeg)
+![PicoPET Hammond back](doc/PicoPET-Hammond2.jpeg)
+![PicoPET Hammond internals](doc/PicoPET-Hammond3.jpeg)
+![PicoPET MDEV](doc/PicoPET-Cal-MDEV.png)
 
