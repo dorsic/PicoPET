@@ -1,6 +1,0 @@
-{
-    "cmake.environment": {
-        "PICO_SDK_PATH": "/Users/dorsic/Development/pico/pico-sdk"
-    },
-    "python.pythonPath": "/usr/local/bin/python3"
-}
